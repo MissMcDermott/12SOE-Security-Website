@@ -1,0 +1,28 @@
+<h1>Register</h1>
+<form action="/">
+    <button>home</button>
+</form> 
+{% if error %}
+    <p>{{error}}</p>
+{% endif %}
+
+<form method="post">
+    <h3>username</h3>
+    <input name="username" id="username" placeholder="username" required>
+    <h3>password</h3>
+    <input name="password" id="password" placeholder="password" type="password" required>
+    <h3>birthdate</h3>
+    <input name="birthdate" id="birthdate" type="date">
+    <h3>bank card number</h3>
+    <input name="cardNum" id="cardNum" placeholder="0000000000000000">
+    <h3>bank card expiry</h3>
+    <input name="expiry" id="expiry" type="date">
+    <h3>CVC</h3>
+    <input name="cvc" id="cvc" placeholder="000">
+    <h3>Mother's maiden name</h3>
+    <input name="maiden" id="maiden" placeholder="M">
+    <h3>Myers Briggs Test Result</h3>
+    <input name="mbti" id="mbti" placeholder="ENTJ">
+    <h3></h3>
+    <input type="submit" value="Register">
+</form>

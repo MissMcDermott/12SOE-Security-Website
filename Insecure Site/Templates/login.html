@@ -1,0 +1,14 @@
+<h1>Login</h1>
+<form action="/">
+    <button>home</button>
+</form> 
+
+{% if error %}
+    <p>{{error}}</p>
+{% endif %}
+
+<form method="post">
+    <input name="username" id="username" placeholder="username" required>
+    <input name="password" id="password" placeholder="password" type="password" required>
+    <input type="submit" value="Login">
+</form>
