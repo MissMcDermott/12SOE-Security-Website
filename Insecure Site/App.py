@@ -2,11 +2,15 @@ from flask import Flask, render_template, request, redirect, url_for
 import sqlite3
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'very_secret'
+
+
 
 #creating the database tables if they are not already there
 connect = sqlite3.connect('database.db')
 connect.execute('''
     CREATE TABLE IF NOT EXISTS USERS (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL,
     password TEXT NOT NULL,
     admin BINARY NOT NULL,
@@ -29,6 +33,7 @@ connect.execute('''
 
 #connect.execute(''' DROP TABLE USERS''')
 
+
 #home page
 @app.route('/')
 def index():
@@ -41,17 +46,18 @@ def login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        with sqlite3.connect("database.db") as post:
-            cursor = post.cursor()
+        with sqlite3.connect("database.db") as conn:
+            cursor = conn.cursor()
 
-            cursor.execute("SELECT username, password FROM USERS WHERE username = ? LIMIT 1", (username,))
+            cursor.execute("SELECT * FROM USERS WHERE username = ? LIMIT 1", (username,))
             userRow = cursor.fetchone()
 
             if userRow is None:
                 return render_template('login.html', error= "invalid username")
 
-            if userRow[1] != password:
+            if userRow[2] != password:
                 return render_template('login.html', error= "incorrect password")
+
 
             return redirect("/content")
             
@@ -70,14 +76,14 @@ def register():
         maiden = request.form.get("maiden")
         mbti = request.form.get("mbti")
 
-        with sqlite3.connect('database.db') as post:
-            cursor = post.cursor()
+        with sqlite3.connect('database.db') as conn:
+            cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM users WHERE username = ? LIMIT 1", (username,))
 
             if cursor.fetchone() is not None:
                 return render_template('register.html', error="Username already taken")
             cursor.execute("INSERT INTO USERS (username, password, admin, birthdate, cardNum, expiry, cvc, maiden, mbti) VALUES (?,?,false,?,?,?,?,?,?)", (username, password, birthdate, cardNum, expiry, cvc, maiden, mbti))
-            post.commit()
+            conn.commit()
 
             return redirect("/login")
     return render_template('register.html')
