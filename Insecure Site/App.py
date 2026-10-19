@@ -1,10 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import sqlite3
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'very_secret'
 
-
+loginManager = LoginManager()
+loginManager.init_app(app)
+loginManager.login_view = 'login'
 
 #creating the database tables if they are not already there
 connect = sqlite3.connect('database.db')
@@ -33,6 +36,19 @@ connect.execute('''
 
 #connect.execute(''' DROP TABLE USERS''')
 
+class User(UserMixin):
+     def __init__(self, id, username, password):
+          self.id = id
+          self.username = username
+          self.password = password
+
+@loginManager.user_loader
+def loadUser(id):
+    with sqlite3.connect("database.db") as conn:
+        user = conn.execute('SELECT * FROM USERS WHERE id = ?', (id,)).fetchone()
+        if user:
+             return User(user[0], user[1], user[2])
+        return None
 
 #home page
 @app.route('/')
@@ -58,6 +74,9 @@ def login():
             if userRow[2] != password:
                 return render_template('login.html', error= "incorrect password")
 
+
+            user = User(userRow[0], userRow[1], userRow[2])
+            login_user(user)
 
             return redirect("/content")
             
@@ -90,6 +109,7 @@ def register():
 
 #content page
 @app.route('/content', methods = ['GET', 'POST'])
+@login_required
 def content():
     if request.method == "POST":
         title = request.form['title']
@@ -106,7 +126,7 @@ def content():
     data = cursor.fetchall()
     print(data)
     connect.close()
-    return render_template('content.html', data=data)
+    return render_template('content.html', username = current_user.username, data=data)
 
 @app.route('/delete/<int:id>', methods=['POST'])
 def delete(id):
@@ -115,5 +135,13 @@ def delete(id):
                  conn.commit()
                  return redirect(url_for("content"))
                 
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect('/login')
+
+
 if __name__ == '__main__':
     app.run(debug= False)
