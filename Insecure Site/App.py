@@ -1,9 +1,18 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, abort, session
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import sqlite3
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+import werkzeug.exceptions
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, DateField, SubmitField
+from wtforms.validators import InputRequired, Length, DateRange
+import json
+from flask_httpauth import HTTPBasicAuth
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'very_secret'
+auth = HTTPBasicAuth()
 
 loginManager = LoginManager()
 loginManager.init_app(app)
@@ -17,12 +26,7 @@ connect.execute('''
     username TEXT NOT NULL,
     password TEXT NOT NULL,
     admin BINARY NOT NULL,
-    birthDate DATE,
-    cardNum TEXT,
-    expiry DATE,
-    cvc INTEGER,
-    maiden TEXT,
-    mbti TEXT
+    birthDate DATE
     )
     ''')
 
@@ -37,18 +41,62 @@ connect.execute('''
 #connect.execute(''' DROP TABLE USERS''')
 
 class User(UserMixin):
-     def __init__(self, id, username, password):
+     def __init__(self, id, username, password, admin=0):
           self.id = id
           self.username = username
           self.password = password
+          self.admin = admin
+
+class RegisterForm(FlaskForm):
+    username = StringField("Username", validators = [InputRequired("Username required"), Length(min=5, max=25, message= "Username must be between 5 and 25 characters")])
+    password = PasswordField("Password", validators=[InputRequired("Password required"), Length(min=10, max=128, message = "Password must be at least 10 characters and shorter than 128 characters")])
+    birthDate = DateField("Birthdate", validators=[InputRequired("birthdate required"), DateRange(max=(2016,1,1), message = "You must be older to register")])
+    submit = SubmitField("Register")
 
 @loginManager.user_loader
 def loadUser(id):
     with sqlite3.connect("database.db") as conn:
         user = conn.execute('SELECT * FROM USERS WHERE id = ?', (id,)).fetchone()
         if user:
-             return User(user[0], user[1], user[2])
+             return User(user[0], user[1], user[2], user[3])
         return None
+
+@auth.verify_password
+def verify_password(username, password):
+     with sqlite3.connect("database.db") as conn:
+            cursor = conn.cursor()
+    
+            cursor.execute("SELECT * FROM USERS WHERE username = ? LIMIT 1", (username,))
+            userRow = cursor.fetchone()
+    
+            if not userRow is None and check_password_hash(userRow[2], password):
+                return username
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.admin:
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+#error handlers
+@app.errorhandler(werkzeug.exceptions.BadRequest)
+def handleBadRequest(e):
+    return "Bad request!", 400
+
+
+
+@app.errorhandler(werkzeug.exceptions.Forbidden)
+def handleBadRequest(e):
+    return "You are fobidden from accessing this page", 403
+
+
+
+@app.errorhandler(werkzeug.exceptions.NotFound)
+def handleNotFound(e):
+    return render_template("notFound.html"), 404
 
 #home page
 @app.route('/')
@@ -61,51 +109,46 @@ def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
+        try:
+            with sqlite3.connect("database.db") as conn:
+                cursor = conn.cursor()
 
-        with sqlite3.connect("database.db") as conn:
-            cursor = conn.cursor()
+                cursor.execute("SELECT * FROM USERS WHERE username = ? LIMIT 1", (username,))
+                userRow = cursor.fetchone()
 
-            cursor.execute("SELECT * FROM USERS WHERE username = ? LIMIT 1", (username,))
-            userRow = cursor.fetchone()
+                if userRow is None or not check_password_hash(userRow[2], password):
+                    return render_template('login.html', error= "invalid username or password")
 
-            if userRow is None:
-                return render_template('login.html', error= "invalid username")
+                user = User(userRow[0], userRow[1], userRow[2], userRow[3])
+                login_user(user)
 
-            if userRow[2] != password:
-                return render_template('login.html', error= "incorrect password")
-
-
-            user = User(userRow[0], userRow[1], userRow[2])
-            login_user(user)
-
-            return redirect("/content")
-            
+                return redirect("/content")
+        except:
+            print("Something went wrong in login")
     return render_template('login.html')
 
 #register page
 @app.route('/register', methods = ['GET', 'POST'])
 def register():
+    form = RegisterForm()
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-        birthdate = request.form.get("birthdate")
-        cardNum = request.form.get("cardNum")
-        expiry = request.form.get("expiry")
-        cvc = request.form.get("cvc")
-        maiden = request.form.get("maiden")
-        mbti = request.form.get("mbti")
+        if form.validate_on_submit:
+            username = form.username.data
+            password = form.password.data
+            birthdate = form.birthDate.data
 
-        with sqlite3.connect('database.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM users WHERE username = ? LIMIT 1", (username,))
 
-            if cursor.fetchone() is not None:
-                return render_template('register.html', error="Username already taken")
-            cursor.execute("INSERT INTO USERS (username, password, admin, birthdate, cardNum, expiry, cvc, maiden, mbti) VALUES (?,?,false,?,?,?,?,?,?)", (username, password, birthdate, cardNum, expiry, cvc, maiden, mbti))
-            conn.commit()
+            with sqlite3.connect('database.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM users WHERE username = ? LIMIT 1", (username,))
 
-            return redirect("/login")
-    return render_template('register.html')
+                if cursor.fetchone() is not None:
+                    return render_template('register.html', error="Username already taken")
+                cursor.execute("INSERT INTO USERS (username, password, admin, birthdate) VALUES (?,?,false,?)", (username, generate_password_hash(password), birthdate))
+                conn.commit()
+
+                return redirect("/login")
+    return render_template('register.html', form=form)
 
 #content page
 @app.route('/content', methods = ['GET', 'POST'])
@@ -126,14 +169,26 @@ def content():
     data = cursor.fetchall()
     print(data)
     connect.close()
-    return render_template('content.html', username = current_user.username, data=data)
+    return render_template('content.html', admin = current_user.admin, username = current_user.username, data=data)
+
+
+
+
+@app.route('/admin')
+@admin_required
+def admin():
+    render_template('admin.html')
+    
+
 
 @app.route('/delete/<int:id>', methods=['POST'])
 def delete(id):
-     with sqlite3.connect("database.db") as conn:
-                 conn.execute('DELETE FROM POSTS WHERE id = ?', (id,))
-                 conn.commit()
-                 return redirect(url_for("content"))
+    if current_user.admin:
+        with sqlite3.connect("database.db") as conn:
+                    conn.execute('DELETE FROM POSTS WHERE id = ?', (id,))
+                    conn.commit()
+                    
+    return redirect(url_for("content"))
                 
 
 @app.route('/logout')
@@ -141,6 +196,16 @@ def delete(id):
 def logout():
     logout_user()
     return redirect('/login')
+
+@app.route('/retrieve', methods=['GET'])
+@auth.login_required
+def retrievePosts():
+    with sqlite3.connect("database.db") as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        data = cursor.execute("SELECT * FROM POSTS").fetchall()
+        conn.commit()
+        return json.dumps( [dict(ix) for ix in data] )
 
 
 if __name__ == '__main__':

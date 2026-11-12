@@ -1,4 +1,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<head>
+    <title>Posts</title>
+</head>
 
 <h2>Welcome, {{username}}</h2>
 <form action="/">
@@ -6,10 +9,11 @@
 </form> 
 <form action="/logout">
     <button>logout</button>
+</form>
+<form action="/admin">
+    <button>secret admin page</button>
 </form> 
-<head>
-    <title>Posts</title>
-</head>
+
 <body>
     <table>
         <tr>
@@ -20,11 +24,13 @@
         <tr>
             <td>{{post[1]}}</td>
             <td>{{post[2]}}</td>
+            {%if admin%}
             <td>
                 <form method="POST" action="{{url_for('delete', id=post[0] )}}">
                     <button class="btn"><i class="fa fa-trash"></i></button>
                 </form>
             </td>
+            {%endif%}
         </tr>
         {%endfor%}
     </table>
